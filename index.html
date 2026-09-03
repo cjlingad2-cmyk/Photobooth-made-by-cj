@@ -860,9 +860,9 @@
 
     let W, H;
     if(state.layout === 'vertical'){
-      W = 640; H = 2000;
+      W = 640; H = 2140;
     } else {
-      W = 1100; H = 1300;
+      W = 1100; H = 1420;
     }
     stripCanvas.width = W; stripCanvas.height = H;
     const ctx = stripCanvas.getContext('2d');
@@ -873,26 +873,26 @@
 
     // header
     ctx.fillStyle = f.textColor;
-    ctx.font = '600 30px "Playfair Display", serif';
+    ctx.font = '700 46px "Playfair Display", serif';
     ctx.textAlign = 'center';
-    ctx.fillText("Cj and Kristal's", W/2, 58);
-    ctx.font = 'italic 500 24px "Cormorant Garamond", serif';
-    ctx.fillText('Photobooth', W/2, 88);
+    ctx.fillText("Cj and Kristal's", W/2, 66);
+    ctx.font = 'italic 600 36px "Cormorant Garamond", serif';
+    ctx.fillText('Photobooth', W/2, 106);
 
     const photoPad = 26;
     if(state.layout === 'vertical'){
       const pw = W - photoPad*2;
       const ph = (pw) * 0.7;
-      let y = 112;
+      let y = 132;
       imgs.forEach(img=>{
         drawPhotoCover(ctx, img, photoPad, y, pw, ph);
         y += ph + 16;
       });
-      drawFooter(ctx, W, H - 130, f);
+      drawFooter(ctx, W, H - 210, f);
     } else {
       const pw = (W - photoPad*3) / 2;
       const ph = pw * 0.72;
-      const startY = 120;
+      const startY = 138;
       const coords = [
         [photoPad, startY],
         [photoPad*2 + pw, startY],
@@ -902,7 +902,7 @@
       imgs.forEach((img,i)=>{
         drawPhotoCover(ctx, img, coords[i][0], coords[i][1], pw, ph);
       });
-      drawFooter(ctx, W, startY + (ph+photoPad)*2 + 16, f);
+      drawFooter(ctx, W, startY + (ph+photoPad)*2 + 20, f);
     }
 
     // frame border + subtle decorations + grain
@@ -951,40 +951,118 @@
 
   function drawFooter(ctx, fullW, y, f){
     ctx.fillStyle = f.textColor;
-    ctx.font = 'italic 500 22px "Cormorant Garamond", serif';
+    ctx.font = 'italic 600 32px "Cormorant Garamond", serif';
     ctx.textAlign = 'center';
-    ctx.fillText(state.customText || 'little moments, captured forever.', fullW/2, y);
-    let y2 = y + 28;
+    const captionLineHeight = 38;
+    const captionLines = wrapText(ctx, state.customText || 'little moments, captured forever.', fullW/2, y, fullW - 60, captionLineHeight);
+
+    let y2 = y + (captionLines - 1) * captionLineHeight + 46;
     if(state.showDate){
-      ctx.font = '400 15px Inter, sans-serif';
+      ctx.font = '600 22px Inter, sans-serif';
       ctx.fillStyle = '#8a7d6c';
       const d = new Date();
       ctx.fillText(d.toLocaleDateString(), fullW/2, y2);
-      y2 += 22;
+      y2 += 34;
     }
     if(state.showLogo){
-      ctx.font = '600 14px "Playfair Display", serif';
+      ctx.font = '700 22px "Playfair Display", serif';
       ctx.fillStyle = f.textColor;
       ctx.fillText("Cj and Kristal's Photobooth", fullW/2, y2);
     }
   }
 
-  /* ---------------- DOWNLOAD ---------------- */
-  document.getElementById('btnJpg').addEventListener('click', ()=>{
-    const link = document.createElement('a');
-    link.download = 'cj-and-kristals-photobooth.jpg';
-    link.href = stripCanvas.toDataURL('image/jpeg', 0.95);
-    link.click();
+  function wrapText(ctx, text, cx, y, maxWidth, lineHeight){
+    const words = text.split(' ');
+    let line = '';
+    const lines = [];
+    for(let i=0;i<words.length;i++){
+      const test = line + words[i] + ' ';
+      if(ctx.measureText(test).width > maxWidth && line !== ''){
+        lines.push(line.trim());
+        line = words[i] + ' ';
+      } else {
+        line = test;
+      }
+    }
+    lines.push(line.trim());
+    lines.forEach((l, i)=>{
+      ctx.fillText(l, cx, y + i * lineHeight);
+    });
+    return lines.length;
+  }
+
+  /* ---------------- DOWNLOAD (mobile-safe) ---------------- */
+  function isIOS(){
+    return /iP(hone|od|ad)/.test(navigator.userAgent) ||
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  }
+
+  function dataUrlToBlob(dataUrl){
+    const parts = dataUrl.split(',');
+    const mimeMatch = parts[0].match(/:(.*?);/);
+    const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+    const bin = atob(parts[1]);
+    const arr = new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+    return new Blob([arr], {type: mime});
+  }
+
+  async function saveFile(dataUrl, filename, mime, btn){
+    const originalLabel = btn ? btn.textContent : null;
+    if(btn){ btn.textContent = 'Preparing…'; btn.disabled = true; }
+    try{
+      const blob = dataUrlToBlob(dataUrl);
+      const file = new File([blob], filename, {type: mime});
+
+      // Prefer native share sheet on mobile — lets the person save straight
+      // to Photos/Files, which is the reliable way to "download" on iOS/Android.
+      if(navigator.canShare && navigator.canShare({files:[file]})){
+        try{
+          await navigator.share({files:[file], title: filename});
+          return;
+        }catch(shareErr){
+          // user cancelled share or share failed — fall through to direct download
+          if(shareErr && shareErr.name === 'AbortError') return;
+        }
+      }
+
+      // Standard desktop-style download via a blob URL.
+      const blobUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = blobUrl;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(()=>URL.revokeObjectURL(blobUrl), 4000);
+
+      // iOS Safari ignores the download attribute and just navigates —
+      // open it in a new tab instead so the person can tap-and-hold to save.
+      if(isIOS()){
+        window.open(blobUrl, '_blank');
+      }
+    }catch(err){
+      alert("Couldn't save the file automatically. Try taking a screenshot instead, or use a different browser.");
+    }finally{
+      if(btn){ btn.textContent = originalLabel; btn.disabled = false; }
+    }
+  }
+
+  document.getElementById('btnJpg').addEventListener('click', (e)=>{
+    const dataUrl = stripCanvas.toDataURL('image/jpeg', 0.95);
+    saveFile(dataUrl, 'cj-and-kristals-photobooth.jpg', 'image/jpeg', e.currentTarget);
   });
 
-  document.getElementById('btnPdf').addEventListener('click', ()=>{
+  document.getElementById('btnPdf').addEventListener('click', (e)=>{
     const { jsPDF } = window.jspdf;
     const w = stripCanvas.width, h = stripCanvas.height;
     const orientation = h >= w ? 'p' : 'l';
     const pdf = new jsPDF({orientation, unit:'px', format:[w,h]});
     const imgData = stripCanvas.toDataURL('image/jpeg', 0.95);
     pdf.addImage(imgData, 'JPEG', 0, 0, w, h);
-    pdf.save('cj-and-kristals-photobooth.pdf');
+    const pdfDataUrl = pdf.output('datauristring');
+    saveFile(pdfDataUrl, 'cj-and-kristals-photobooth.pdf', 'application/pdf', e.currentTarget);
   });
 
   /* ---------------- RESTART ---------------- */
